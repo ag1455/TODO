@@ -2922,19 +2922,19 @@ void eDVBServicePlay::setCutListEnable(int enable)
 	cutlistToCuesheet();
 }
 
-void eDVBServicePlay::updateTimeshiftPids()
+/*void eDVBServicePlay::updateTimeshiftPids()
 {
 	if (!m_openpliPC_record)
 		return;
 
 //Крэш здесь
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-/*	if (!m_openpliPC_record && !m_record)
+	if (!m_openpliPC_record && !m_record)
 		return;
 
 	ePtr<iTsSource> current_source; // временная заглушка, просто меняем условие ниже
 	if (!m_openpliPC_record && !m_record) // разрешаем работу, если есть хотя бы один рекордер
-		return;*/
+		return;
 
 	eDVBServicePMTHandler::program program;
 	eDVBServicePMTHandler &h = m_timeshift_active ? m_service_handler_timeshift : m_service_handler;
@@ -3007,6 +3007,176 @@ void eDVBServicePlay::updateTimeshiftPids()
 
 		if (timing_pid != -1)
 	//		if (m_openpliPC_record)
+			m_openpliPC_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
+	}
+}*/
+
+/*void eDVBServicePlay::updateTimeshiftPids()
+{
+	// 1. Защита: если нет вообще ни одного активного рекордера, нам делать нечего
+	if (!m_openpliPC_record && !m_record)
+		return;
+
+	eDVBServicePMTHandler::program program;
+	eDVBServicePMTHandler &h = m_timeshift_active ? m_service_handler_timeshift : m_service_handler;
+
+	if (h.getProgramInfo(program))
+		return;
+	else
+	{
+		int timing_pid = -1;
+		int timing_stream_type = -1;
+		iDVBTSRecorder::timing_pid_type timing_pid_type = iDVBTSRecorder::none;
+		std::set<int> pids_to_record;
+		pids_to_record.insert(0); // PAT
+		if (program.pmtPid != -1)
+		pids_to_record.insert(program.pmtPid); // PMT
+
+		if (program.textPid != -1)
+		pids_to_record.insert(program.textPid); // Videotext
+
+		for (std::vector<eDVBServicePMTHandler::videoStream>::const_iterator
+			i(program.videoStreams.begin());
+			i != program.videoStreams.end(); ++i)
+		{
+			if (timing_pid == -1)
+			{
+				timing_pid = i->pid;
+				timing_stream_type = i->type;
+				timing_pid_type = iDVBTSRecorder::video_pid;
+			}
+			pids_to_record.insert(i->pid);
+		}
+
+		for (std::vector<eDVBServicePMTHandler::audioStream>::const_iterator
+			i(program.audioStreams.begin());
+			i != program.audioStreams.end(); ++i)
+		{
+			if (timing_pid == -1)
+			{
+				timing_pid = i->pid;
+				timing_stream_type = i->type;
+				timing_pid_type = iDVBTSRecorder::audio_pid;
+			}
+			pids_to_record.insert(i->pid);
+		}
+
+		for (std::vector<eDVBServicePMTHandler::subtitleStream>::const_iterator
+			i(program.subtitleStreams.begin());
+			i != program.subtitleStreams.end(); ++i)
+				pids_to_record.insert(i->pid);
+
+		std::set<int> new_pids, obsolete_pids;
+
+		std::set_difference(pids_to_record.begin(), pids_to_record.end(),
+				m_pids_active.begin(), m_pids_active.end(),
+				std::inserter(new_pids, new_pids.begin()));
+
+		std::set_difference(
+				m_pids_active.begin(), m_pids_active.end(),
+				pids_to_record.begin(), pids_to_record.end(),
+				std::inserter(obsolete_pids, obsolete_pids.begin()) // Исправлено: пишем в obsolete_pids, а не в new_pids
+				);
+
+		// Управляем PID'ами только в том объекте, который реально существует в памяти
+		for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
+		{
+			if (m_openpliPC_record) m_openpliPC_record->addPID(*i);
+			if (m_record) m_record->addPID(*i);
+		}
+
+		for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
+		{
+			if (m_openpliPC_record) m_openpliPC_record->removePID(*i);
+			if (m_record) m_record->removePID(*i);
+		}
+
+		if (timing_pid != -1)
+		{
+			if (m_openpliPC_record) m_openpliPC_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
+			if (m_record) m_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
+		}
+
+		// Запоминаем текущие PIDs, чтобы в следующий раз корректно вычислить разницу (obsolete)
+		m_pids_active = pids_to_record;
+	}
+}*/
+
+void eDVBServicePlay::updateTimeshiftPids()
+{
+	// Безопасный возврат к вашей рабочей логике:
+	// Если мы не в режиме Live TV (нет m_openpliPC_record), просто выходим,
+	// чтобы не трогать и не ломать логику оригинального таймшифта.
+	if (!m_openpliPC_record)
+		return;
+
+	eDVBServicePMTHandler::program program;
+	eDVBServicePMTHandler &h = m_timeshift_active ? m_service_handler_timeshift : m_service_handler;
+
+	if (h.getProgramInfo(program))
+		return;
+	else
+	{
+		int timing_pid = -1;
+		int timing_stream_type = -1;
+		iDVBTSRecorder::timing_pid_type timing_pid_type = iDVBTSRecorder::none;
+		std::set<int> pids_to_record;
+		pids_to_record.insert(0); // PAT
+		if (program.pmtPid != -1)
+			pids_to_record.insert(program.pmtPid); // PMT
+
+		if (program.textPid != -1)
+			pids_to_record.insert(program.textPid); // Videotext
+
+		for (std::vector<eDVBServicePMTHandler::videoStream>::const_iterator
+			i(program.videoStreams.begin());
+			i != program.videoStreams.end(); ++i)
+		{
+			if (timing_pid == -1)
+			{
+				timing_pid = i->pid;
+				timing_stream_type = i->type;
+				timing_pid_type = iDVBTSRecorder::video_pid;
+			}
+			pids_to_record.insert(i->pid);
+		}
+
+		for (std::vector<eDVBServicePMTHandler::audioStream>::const_iterator
+			i(program.audioStreams.begin());
+			i != program.audioStreams.end(); ++i)
+		{
+			if (timing_pid == -1)
+			{
+				timing_pid = i->pid;
+				timing_stream_type = i->type;
+				timing_pid_type = iDVBTSRecorder::audio_pid;
+			}
+			pids_to_record.insert(i->pid);
+		}
+
+		for (std::vector<eDVBServicePMTHandler::subtitleStream>::const_iterator
+			i(program.subtitleStreams.begin());
+			i != program.subtitleStreams.end(); ++i)
+				pids_to_record.insert(i->pid);
+
+		std::set<int> new_pids, obsolete_pids;
+
+		std::set_difference(pids_to_record.begin(), pids_to_record.end(),
+				m_pids_active.begin(), m_pids_active.end(),
+				std::inserter(new_pids, new_pids.begin()));
+
+		std::set_difference(
+				m_pids_active.begin(), m_pids_active.end(),
+				pids_to_record.begin(), pids_to_record.end(),
+				std::inserter(obsolete_pids, obsolete_pids.begin()));
+
+		for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
+			m_openpliPC_record->addPID(*i);
+
+		for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
+			m_openpliPC_record->removePID(*i);
+
+		if (timing_pid != -1)
 			m_openpliPC_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
 	}
 }
