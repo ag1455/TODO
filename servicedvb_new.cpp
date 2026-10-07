@@ -1653,60 +1653,6 @@ RESULT eDVBServicePlay::getLength(pts_t &len)
 	return pvr_channel->getLength(len);
 }
 
-/*RESULT eDVBServicePlay::pause()
-{
-	eDebug("[eDVBServicePlay] pause");
-	setFastForward_internal(0, m_slowmotion || m_fastforward > 1);
-	if (m_decoder)
-	{
-		m_slowmotion = 0;
-		m_is_paused = 1;
-		return m_decoder->pause();
-	} else
-		return -1;
-}
-
-RESULT eDVBServicePlay::unpause()
-{
-	eDebug("[eDVBServicePlay] unpause");
-	setFastForward_internal(0, m_slowmotion || m_fastforward > 1);
-	if (m_decoder)
-	{
-		m_slowmotion = 0;
-		m_is_paused = 0;
-		return m_decoder->play();
-	} else
-		return -1;
-}*/
-
-/*RESULT eDVBServicePlay::pause()
-{
-	eDebug("[eDVBServicePlay] pause");
-	m_is_paused = 1;
-
-	cXineLib *xineLib = cXineLib::getInstance();
-	if (xineLib)
-		xineLib->VideoPause(); // Замораживаем кадр на ПК вместо черного экрана
-
-	if (m_decoder)
-		return m_decoder->pause();
-	return 0;
-}
-
-RESULT eDVBServicePlay::unpause()
-{
-	eDebug("[eDVBServicePlay] unpause");
-	m_is_paused = 0;
-
-	cXineLib *xineLib = cXineLib::getInstance();
-	if (xineLib)
-		xineLib->VideoResume(); // Размораживаем кадр при снятии
-
-	if (m_decoder)
-		return m_decoder->play();
-	return 0;
-}*/
-
 RESULT eDVBServicePlay::pause()
 {
 	eDebug("[eDVBServicePlay] pause");
@@ -2699,10 +2645,6 @@ RESULT eDVBServicePlay::startTimeshift()
 	if (m_timeshift_enabled == 1) // Сделайте проверку строгой
 		return -1;
 
-/*	if (m_timeshift_enabled)
-		return -1;*/
-
-		/* start recording with the data demux. */
 	if (m_service_handler.getDataDemux(demux))
 		return -2;
 
@@ -2774,21 +2716,6 @@ RESULT eDVBServicePlay::stopTimeshift(bool swToLive)
 		close(m_timeshift_fd);
 		m_timeshift_fd = -1;
 	}
-
-/*if (!m_save_timeshift)
-	{
-		eDebug("[eDVBServicePlay] remove timeshift files");
-		eBackgroundFileEraser::getInstance()->erase(m_timeshift_file);
-		eBackgroundFileEraser::getInstance()->erase(m_timeshift_file + ".sc");
-		eBackgroundFileEraser::getInstance()->erase(m_timeshift_file + ".cuts");
-	}
-	else
-	{
-		eDebug("[eDVBServicePlay] timeshift files not deleted");
-		m_save_timeshift = 0;
-	}
-	return 0;
-}*/
 
 	if (!m_save_timeshift && !m_timeshift_file.empty())
 	{
@@ -2956,186 +2883,6 @@ void eDVBServicePlay::setCutListEnable(int enable)
 	cutlistToCuesheet();
 }
 
-/*void eDVBServicePlay::updateTimeshiftPids()
-{
-	if (!m_openpliPC_record)
-		return;
-
-//Крэш здесь
-//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	if (!m_openpliPC_record && !m_record)
-		return;
-
-	ePtr<iTsSource> current_source; // временная заглушка, просто меняем условие ниже
-	if (!m_openpliPC_record && !m_record) // разрешаем работу, если есть хотя бы один рекордер
-		return;
-
-	eDVBServicePMTHandler::program program;
-	eDVBServicePMTHandler &h = m_timeshift_active ? m_service_handler_timeshift : m_service_handler;
-
-	if (h.getProgramInfo(program))
-		return;
-	else
-	{
-		int timing_pid = -1;
-		int timing_stream_type = -1;
-		iDVBTSRecorder::timing_pid_type timing_pid_type = iDVBTSRecorder::none;
-		std::set<int> pids_to_record;
-		pids_to_record.insert(0); // PAT
-		if (program.pmtPid != -1)
-			pids_to_record.insert(program.pmtPid); // PMT
-
-		if (program.textPid != -1)
-			pids_to_record.insert(program.textPid); // Videotext
-
-		for (std::vector<eDVBServicePMTHandler::videoStream>::const_iterator
-			i(program.videoStreams.begin());
-			i != program.videoStreams.end(); ++i)
-		{
-			if (timing_pid == -1)
-			{
-				timing_pid = i->pid;
-				timing_stream_type = i->type;
-				timing_pid_type = iDVBTSRecorder::video_pid;
-			}
-			pids_to_record.insert(i->pid);
-		}
-
-		for (std::vector<eDVBServicePMTHandler::audioStream>::const_iterator
-			i(program.audioStreams.begin());
-			i != program.audioStreams.end(); ++i)
-		{
-			if (timing_pid == -1)
-			{
-				timing_pid = i->pid;
-				timing_stream_type = i->type;
-				timing_pid_type = iDVBTSRecorder::audio_pid;
-			}
-			pids_to_record.insert(i->pid);
-		}
-
-		for (std::vector<eDVBServicePMTHandler::subtitleStream>::const_iterator
-			i(program.subtitleStreams.begin());
-			i != program.subtitleStreams.end(); ++i)
-				pids_to_record.insert(i->pid);
-
-		std::set<int> new_pids, obsolete_pids;
-
-		std::set_difference(pids_to_record.begin(), pids_to_record.end(),
-				m_pids_active.begin(), m_pids_active.end(),
-				std::inserter(new_pids, new_pids.begin()));
-
-		std::set_difference(
-				m_pids_active.begin(), m_pids_active.end(),
-				pids_to_record.begin(), pids_to_record.end(),
-				std::inserter(new_pids, new_pids.begin())
-				);
-
-		for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
-	//		if (m_openpliPC_record)
-			m_openpliPC_record->addPID(*i);
-
-		for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
-	//		if (m_openpliPC_record)
-			m_openpliPC_record->removePID(*i);
-
-		if (timing_pid != -1)
-	//		if (m_openpliPC_record)
-			m_openpliPC_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
-	}
-}*/
-
-/*void eDVBServicePlay::updateTimeshiftPids()
-{
-	// 1. Защита: если нет вообще ни одного активного рекордера, нам делать нечего
-	if (!m_openpliPC_record && !m_record)
-		return;
-
-	eDVBServicePMTHandler::program program;
-	eDVBServicePMTHandler &h = m_timeshift_active ? m_service_handler_timeshift : m_service_handler;
-
-	if (h.getProgramInfo(program))
-		return;
-	else
-	{
-		int timing_pid = -1;
-		int timing_stream_type = -1;
-		iDVBTSRecorder::timing_pid_type timing_pid_type = iDVBTSRecorder::none;
-		std::set<int> pids_to_record;
-		pids_to_record.insert(0); // PAT
-		if (program.pmtPid != -1)
-		pids_to_record.insert(program.pmtPid); // PMT
-
-		if (program.textPid != -1)
-		pids_to_record.insert(program.textPid); // Videotext
-
-		for (std::vector<eDVBServicePMTHandler::videoStream>::const_iterator
-			i(program.videoStreams.begin());
-			i != program.videoStreams.end(); ++i)
-		{
-			if (timing_pid == -1)
-			{
-				timing_pid = i->pid;
-				timing_stream_type = i->type;
-				timing_pid_type = iDVBTSRecorder::video_pid;
-			}
-			pids_to_record.insert(i->pid);
-		}
-
-		for (std::vector<eDVBServicePMTHandler::audioStream>::const_iterator
-			i(program.audioStreams.begin());
-			i != program.audioStreams.end(); ++i)
-		{
-			if (timing_pid == -1)
-			{
-				timing_pid = i->pid;
-				timing_stream_type = i->type;
-				timing_pid_type = iDVBTSRecorder::audio_pid;
-			}
-			pids_to_record.insert(i->pid);
-		}
-
-		for (std::vector<eDVBServicePMTHandler::subtitleStream>::const_iterator
-			i(program.subtitleStreams.begin());
-			i != program.subtitleStreams.end(); ++i)
-				pids_to_record.insert(i->pid);
-
-		std::set<int> new_pids, obsolete_pids;
-
-		std::set_difference(pids_to_record.begin(), pids_to_record.end(),
-				m_pids_active.begin(), m_pids_active.end(),
-				std::inserter(new_pids, new_pids.begin()));
-
-		std::set_difference(
-				m_pids_active.begin(), m_pids_active.end(),
-				pids_to_record.begin(), pids_to_record.end(),
-				std::inserter(obsolete_pids, obsolete_pids.begin()) // Исправлено: пишем в obsolete_pids, а не в new_pids
-				);
-
-		// Управляем PID'ами только в том объекте, который реально существует в памяти
-		for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
-		{
-			if (m_openpliPC_record) m_openpliPC_record->addPID(*i);
-			if (m_record) m_record->addPID(*i);
-		}
-
-		for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
-		{
-			if (m_openpliPC_record) m_openpliPC_record->removePID(*i);
-			if (m_record) m_record->removePID(*i);
-		}
-
-		if (timing_pid != -1)
-		{
-			if (m_openpliPC_record) m_openpliPC_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
-			if (m_record) m_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
-		}
-
-		// Запоминаем текущие PIDs, чтобы в следующий раз корректно вычислить разницу (obsolete)
-		m_pids_active = pids_to_record;
-	}
-}*/
-
 void eDVBServicePlay::updateTimeshiftPids()
 {
 	// Безопасный возврат к вашей рабочей логике:
@@ -3167,12 +2914,12 @@ void eDVBServicePlay::updateTimeshiftPids()
 			i != program.videoStreams.end(); ++i)
 		{
 			if (timing_pid == -1)
-			{
-				timing_pid = i->pid;
-				timing_stream_type = i->type;
-				timing_pid_type = iDVBTSRecorder::video_pid;
-			}
-			pids_to_record.insert(i->pid);
+				{
+					timing_pid = i->pid;
+					timing_stream_type = i->type;
+					timing_pid_type = iDVBTSRecorder::video_pid;
+				}
+				pids_to_record.insert(i->pid);
 		}
 
 		for (std::vector<eDVBServicePMTHandler::audioStream>::const_iterator
@@ -3189,29 +2936,41 @@ void eDVBServicePlay::updateTimeshiftPids()
 		}
 
 		for (std::vector<eDVBServicePMTHandler::subtitleStream>::const_iterator
-			i(program.subtitleStreams.begin());
-			i != program.subtitleStreams.end(); ++i)
+				i(program.subtitleStreams.begin());
+				i != program.subtitleStreams.end(); ++i)
 				pids_to_record.insert(i->pid);
 
-		std::set<int> new_pids, obsolete_pids;
+			std::set<int> new_pids, obsolete_pids;
 
-		std::set_difference(pids_to_record.begin(), pids_to_record.end(),
-				m_pids_active.begin(), m_pids_active.end(),
-				std::inserter(new_pids, new_pids.begin()));
+			std::set_difference(pids_to_record.begin(), pids_to_record.end(),
+					m_pids_active.begin(), m_pids_active.end(),
+					std::inserter(new_pids, new_pids.begin()));
 
-		std::set_difference(
-				m_pids_active.begin(), m_pids_active.end(),
-				pids_to_record.begin(), pids_to_record.end(),
-				std::inserter(obsolete_pids, obsolete_pids.begin()));
+			std::set_difference(
+					m_pids_active.begin(), m_pids_active.end(),
+					pids_to_record.begin(), pids_to_record.end(),
+					std::inserter(obsolete_pids, obsolete_pids.begin()));
 
-		for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
-			m_openpliPC_record->addPID(*i);
+			// Направляем PID'ы строго в те объекты рекордеров, которые сейчас созданы в памяти!
+			for (std::set<int>::iterator i(new_pids.begin()); i != new_pids.end(); ++i)
+			{
+				if (m_openpliPC_record) m_openpliPC_record->addPID(*i);
+				if (m_record) m_record->addPID(*i);
+			}
 
-		for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
-			m_openpliPC_record->removePID(*i);
+			for (std::set<int>::iterator i(obsolete_pids.begin()); i != obsolete_pids.end(); ++i)
+			{
+				if (m_openpliPC_record) m_openpliPC_record->removePID(*i);
+				if (m_record) m_record->removePID(*i);
+			}
 
-		if (timing_pid != -1)
-			m_openpliPC_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
+			if (timing_pid != -1)
+			{
+					if (m_openpliPC_record) m_openpliPC_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
+					if (m_record) m_record->setTimingPID(timing_pid, timing_pid_type, timing_stream_type);
+			}
+
+			m_pids_active = pids_to_record;
 	}
 }
 
@@ -3220,297 +2979,6 @@ RESULT eDVBServicePlay::setNextPlaybackFile(const char *f)
 	m_timeshift_file_next = f;
 	return 0;
 }
-
-/*void eDVBServicePlay::switchToLive()
-{
-	if (!m_timeshift_active)
-		return;
-
-	eDebug("[eDVBServicePlay] SwitchToLive");
-
-	resetTimeshift(0);
-
-	m_is_paused = m_skipmode = m_fastforward = m_slowmotion = 0; // not supported in live mode
-
-	/ free the timeshift service handler, we need the resources
-	m_service_handler_timeshift.free();
-
-	//Start LiveTV OpenPLiPC
-	start();
-
-	ePtr<iDVBDemux> demux;
-	if (!m_is_pvr && !m_service_handler.getDataDemux(demux))
-	{
-		printf("Start live TV, end Timeshift!\n");
-
-		demux->createTSRecorder(m_openpliPC_record);
-		if (!m_openpliPC_record)
-			return;
-
-		if (m_openpliPC_fd < 0)
-		{
-			m_openpliPC_record = 0;
-			return;
-		}
-		m_openpliPC_record->setTargetFD(m_openpliPC_fd);
-		m_openpliPC_record->setTargetFilename(m_openpliPC_file);
-		m_openpliPC_record->enableAccessPoints(false);
-		updateTimeshiftPids(); // workaround to set PIDs
-		m_openpliPC_record->start();
-
-		printf("Start live TV END\n");
-	}
-
-	updateDecoder(true);
-}*/
-
-/*void eDVBServicePlay::switchToLive()
-{
-    if (!m_timeshift_active)
-	return;
-
-    eDebug("[eDVBServicePlay] SwitchToLive - Safe 64-bit reset");
-
-    // 1. Принудительно очищаем и сбрасываем хэндлер таймшифта ДО обнуления указателей
-    m_service_handler_timeshift.free();
-
-    // 2. Возвращаем базовые переменные состояния
-    m_is_paused = m_skipmode = m_fastforward = m_slowmotion = 0; 
-    m_timeshift_active = 0;
-
-    // 3. Выделяем чистые контейнеры для smart-pointers, чтобы избежать Signal 11 в tuneExt
-    m_cue = new eCueSheet();
-
-    // 4. Явно инициализируем декодеры в дефолтное состояние, предотвращая зависание xine
-    m_decode_demux = 0;
-    m_decoder = 0;
-    m_timeshift_changed = 1;
-
-    eDebug("[eDVBServicePlay] SwitchToLive - Restarting Live Service");
-    start();
-
-    // 5. Перезапускаем рекордер OpenPLi-PC для вывода в FIFO плеера xine
-    ePtr<iDVBDemux> demux;
-    if (!m_is_pvr && !m_service_handler.getDataDemux(demux))
-    {
-	demux->createTSRecorder(m_openpliPC_record);
-	if (m_openpliPC_record && m_openpliPC_fd >= 0)
-	{
-	    m_openpliPC_record->setTargetFD(m_openpliPC_fd);
-	    m_openpliPC_record->setTargetFilename(m_openpliPC_file);
-	    m_openpliPC_record->enableAccessPoints(false);
-	    updateTimeshiftPids();
-	    m_openpliPC_record->start();
-	}
-    }
-
-    updateDecoder(true);
-}
-
-/*void eDVBServicePlay::switchToLive()
-{
-	if (!m_timeshift_active)
-		return;
-
-	eDebug("[eDVBServicePlay] SwitchToLive");
-
-	// Перед полной очисткой создаем безопасный объект для деструкторов
-	m_cue = new eCueSheet();
-
-	resetTimeshift(0);
-
-	m_is_paused = m_skipmode = m_fastforward = m_slowmotion = 0;
-
-	m_service_handler_timeshift.free();
-
-	start();
-
-	// Перезапуск оригинального пайпа OpenPLi-PC
-	ePtr<iDVBDemux> demux;
-	if (!m_is_pvr && !m_service_handler.getDataDemux(demux))
-	{
-		demux->createTSRecorder(m_openpliPC_record);
-		if (m_openpliPC_record && m_openpliPC_fd >= 0)
-		{
-		m_openpliPC_record->setTargetFD(m_openpliPC_fd);
-		m_openpliPC_record->setTargetFilename(m_openpliPC_file);
-		m_openpliPC_record->enableAccessPoints(false);
-		updateTimeshiftPids();
-		m_openpliPC_record->start();
-		}
-	}
-
-	updateDecoder(true);
-}*/
-
-/*void eDVBServicePlay::switchToLive()
-{
-	if (!m_timeshift_active)
-		return;
-
-	eDebug("[eDVBServicePlay] SwitchToLive");
-
-	// ХАК ДЛЯ 64-БИТ: Выделяем чистую память под cuesheet, стирая старый "дикий" указатель,
-	// который приводил к падению tuneExt при возврате к обычному эфиру
-	m_cue = new eCueSheet(); 
-
-	resetTimeshift(0);
-
-	m_is_paused = m_skipmode = m_fastforward = m_slowmotion = 0;
-
-	m_service_handler_timeshift.free();
-
-	start();
-
-	// Перезапуск рекордера OpenPLi-PC
-	ePtr<iDVBDemux> demux;
-	if (!m_is_pvr && !m_service_handler.getDataDemux(demux))
-	{
-		demux->createTSRecorder(m_openpliPC_record);
-		if (m_openpliPC_record && m_openpliPC_fd >= 0)
-		{
-			m_openpliPC_record->setTargetFD(m_openpliPC_fd);
-			m_openpliPC_record->setTargetFilename(m_openpliPC_file);
-			m_openpliPC_record->enableAccessPoints(false);
-			updateTimeshiftPids();
-			m_openpliPC_record->start();
-		}
-	}
-
-	updateDecoder(true);
-}*/
-
-/*void eDVBServicePlay::switchToLive()
-{
-	if (!m_timeshift_active)
-	return;
-
-	eDebug("[eDVBServicePlay] SwitchToLive - Safe 64-bit reset");
-
-	// 1. Принудительно очищаем и сбрасываем хэндлер таймшифта ДО обнуления указателей
-	m_service_handler_timeshift.free();
-
-	// 2. Возвращаем базовые переменные состояния
-	m_is_paused = m_skipmode = m_fastforward = m_slowmotion = 0; 
-	m_timeshift_active = 0;
-
-	// 3. Выделяем чистые контейнеры для smart-pointers, чтобы избежать Signal 11 в tuneExt
-	m_cue = new eCueSheet();
-
-	// 4. Явно инициализируем декодеры в дефолтное состояние, предотвращая зависание xine
-	m_decode_demux = 0;
-	m_decoder = 0;
-	m_timeshift_changed = 1;
-
-	eDebug("[eDVBServicePlay] SwitchToLive - Restarting Live Service");
-	start();
-
-	// 5. Перезапускаем рекордер OpenPLi-PC для вывода в FIFO плеера xine
-	ePtr<iDVBDemux> demux;
-	if (!m_is_pvr && !m_service_handler.getDataDemux(demux))
-	{
-		demux->createTSRecorder(m_openpliPC_record);
-		if (m_openpliPC_record && m_openpliPC_fd >= 0)
-		{
-			m_openpliPC_record->setTargetFD(m_openpliPC_fd);
-			m_openpliPC_record->setTargetFilename(m_openpliPC_file);
-			m_openpliPC_record->enableAccessPoints(false);
-			updateTimeshiftPids();
-			m_openpliPC_record->start();
-		}
-	}
-
-	updateDecoder(true);
-}*/
-
-/*void eDVBServicePlay::switchToLive()
-{
-	if (!m_timeshift_active)
-		return;
-
-	eDebug("[eDVBServicePlay] SwitchToLive");
-
-	resetTimeshift(0);
-
-	m_is_paused = m_skipmode = m_fastforward = m_slowmotion = 0; /* not supported in live mode */
-
-	/* free the timeshift service handler, we need the resources */
-//	m_service_handler_timeshift.free();
-
-	// ХАК ДЛЯ 64-БИТ: Инициализируем пустой лист меток перед стартом Live TV,
-	// чтобы tuneExt не падал при обращении к нулевому указателю m_cue
-//	m_cue = new eCueSheet();
-
-/*	start();
-
-	ePtr<iDVBDemux> demux;
-	if (!m_is_pvr && !m_service_handler.getDataDemux(demux))
-	{
-		printf("Start live TV, end Timeshift!\n");
-
-		demux->createTSRecorder(m_openpliPC_record);
-		if (!m_openpliPC_record)
-			return;
-
-		if (m_openpliPC_fd < 0)
-		{
-			m_openpliPC_record = 0;
-			return;
-		}
-		m_openpliPC_record->setTargetFD(m_openpliPC_fd);
-		m_openpliPC_record->setTargetFilename(m_openpliPC_file);
-		m_openpliPC_record->enableAccessPoints(false);
-		updateTimeshiftPids(); // workaround to set PIDs
-		m_openpliPC_record->start();
-
-		printf("Start live TV END\n");
-	}
-
-	updateDecoder(true);
-}*/
-
-/*void eDVBServicePlay::switchToLive()
-{
-	if (!m_timeshift_active)
-		return;
-
-	eDebug("[eDVBServicePlay] SwitchToLive - Safe 64-bit reset");
-
-	// 1. Принудительно очищаем и сбрасываем хэндлер таймшифта ДО обнуления указателей
-	m_service_handler_timeshift.free();
-
-	// 2. Возвращаем базовые переменные состояния
-	m_is_paused = m_skipmode = m_fastforward = m_slowmotion = 0; 
-	m_timeshift_active = 0;
-
-	// 3. Выделяем чистые контейнеры для smart-pointers, чтобы избежать Signal 11 в tuneExt
-	m_cue = new eCueSheet();
-
-	// 4. Явно инициализируем декодеры в дефолтное состояние, предотвращая зависание xine
-	m_decode_demux = 0;
-	m_decoder = 0;
-	m_timeshift_changed = 1;
-
-	eDebug("[eDVBServicePlay] SwitchToLive - Restarting Live Service");
-	start();
-
-	// 5. Перезапускаем рекордер OpenPLi-PC для вывода в FIFO плеера xine
-	ePtr<iDVBDemux> demux;
-	if (!m_is_pvr && !m_service_handler.getDataDemux(demux))
-	{
-		demux->createTSRecorder(m_openpliPC_record);
-		if (m_openpliPC_record && m_openpliPC_fd >= 0)
-		{
-			m_openpliPC_record->setTargetFD(m_openpliPC_fd);
-			m_openpliPC_record->setTargetFilename(m_openpliPC_file);
-			m_openpliPC_record->enableAccessPoints(false);
-			updateTimeshiftPids();
-			m_openpliPC_record->start();
-		}
-	}
-
-	updateDecoder(true);
-}*/
 
 void eDVBServicePlay::switchToLive()
 {
@@ -3610,158 +3078,6 @@ ePtr<iTsSource> eDVBServicePlay::createTsSource(eServiceReferenceDVB &ref, int p
 		return ePtr<iTsSource>(f);
 	}
 }
-
-/*void eDVBServicePlay::switchToTimeshift()
-{
-	if (m_timeshift_active)
-	return;
-
-	resetTimeshift(1);
-
-	eServiceReferenceDVB r = (eServiceReferenceDVB&)m_reference;
-	r.path = m_timeshift_file;
-
-	// Гарантируем, что m_cue создан и очищен перед вызовом tuneExt
-	if (!m_cue) {
-		m_cue = new eCueSheet();
-	}
-	m_cue->seekTo(0, -1000);
-
-	ePtr<iTsSource> source = createTsSource(r);
-
-	// ВЫЗЫВАЕМ ОРИГИНАЛЬНЫЙ МЕТОД, но защищаем его
-	m_service_handler_timeshift.tuneExt(r, source, m_timeshift_file.c_str(), m_cue, 0, m_dvb_service, eDVBServicePMTHandler::timeshift_playback, false);
-
-	eDebug("[eDVBServicePlay] switchToTimeshift, in pause mode now.");
-	pause();
-
-	// ХАК ДЛЯ 64-БИТ: Сохраняем указатель на demux, чтобы деструктор 
-	// m_openpliPC_record->stop() не смог очистить его в памяти.
-	ePtr<iDVBDemux> hold_demux = m_decode_demux;
-
-	updateDecoder(true);
-
-	if (m_openpliPC_record)
-	{
-		m_openpliPC_record->stop();
-		m_openpliPC_record = 0;
-	}
-	if (m_openpliPC_fd > 0)
-	{
-		printf("Switch from Live TV to Timeshift, close(m_openpliPC_fd) %d\n", m_openpliPC_fd);
-		close(m_openpliPC_fd);
-		m_openpliPC_fd = -1;
-	}
-
-	// Возвращаем демультиплексор на место, гарантируя, что xine увидит поток файла
-	if (!m_decode_demux && hold_demux) {
-		m_decode_demux = hold_demux;
-	}
-}
-
-/*	eDebug("[eDVBServicePlay] switchToTimeshift, in pause mode now.");
-	pause();
-	updateDecoder(true);
-
-	// ОРИГИНАЛЬНЫЙ кусок OpenPLi-PC для работы с живым потоком
-	if (m_openpliPC_record)
-	{
-		m_openpliPC_record->stop();
-		m_openpliPC_record = 0;
-	}
-	if (m_openpliPC_fd > 0)
-	{
-		printf("Switch from Live TV to Timeshift, close(m_openpliPC_fd) %d\n", m_openpliPC_fd);
-		close(m_openpliPC_fd);
-		m_openpliPC_fd = -1;
-	}
-}*/
-
-/*void eDVBServicePlay::switchToTimeshift()
-{
-//	if (m_timeshift_active)
-//		return;
-
-//	resetTimeshift(1);
-
-//	eServiceReferenceDVB r = (eServiceReferenceDVB&)m_reference;
-//	r.path = m_timeshift_file;
-
-//	m_cue->seekTo(0, -1000);
-
-//	ePtr<iTsSource> source = createTsSource(r);
-	m_service_handler_timeshift.tuneExt(r, source, m_timeshift_file.c_str(), m_cue, 0, m_dvb_service, eDVBServicePMTHandler::timeshift_playback, false); /* use the decoder demux for everything
-
-//	eDebug("[eDVBServicePlay] switchToTimeshift, in pause mode now.");
-//	pause();
-//	updateDecoder(true); // mainly to switch off PCR, and to set pause
-
-//	cXineLib *xineLib = cXineLib::getInstance();
-//	if (xineLib && !m_timeshift_file.empty())
-//	{
-//		eDebug("[eDVBServicePlay] PC-TIMESHIFT: Tell xine to play file: %s", m_timeshift_file.c_str());
-//		// Передаем путь к файлу таймшифта в метод FilmVideo
-//		xineLib->FilmVideo((char*)m_timeshift_file.c_str());
-//	}
-
-	if (m_openpliPC_record)
-	{
-		m_openpliPC_record->stop();
-		m_openpliPC_record = 0;
-	}
-	if (m_openpliPC_fd > 0)
-	{
-		printf("Switch from Live TV to Timeshift, close(m_openpliPC_fd) %d\n", m_openpliPC_fd);
-		close(m_openpliPC_fd);
-		m_openpliPC_fd = -1;
-	}
-
-	// ДОБАВЛЯЕМ ПЕРЕНАПРАВЛЕНИЕ XINE НА ФАЙЛ:
-//	cXineLib *xineLib = cXineLib::getInstance();
-//	if (xineLib)
-//	{
-//		eDebug("[eDVBServicePlay] Switching xine source to file: %s", m_timeshift_file.c_str());
-//		// Даем команду xine закрыть живой поток и открыть файл таймшифта
-//		xineLib->FilePlay(m_timeshift_file.c_str());
-//	}
-}*/
-
-/*void eDVBServicePlay::switchToTimeshift()
-{
-	if (m_timeshift_active)
-		return;
-
-	eDebug("[eDVBServicePlay] switchToTimeshift - Initializing file playback");
-	resetTimeshift(1);
-
-	eServiceReferenceDVB r = (eServiceReferenceDVB&)m_reference;
-	r.path = m_timeshift_file;
-
-	if (!m_cue) {
-		m_cue = new eCueSheet();
-	}
-	m_cue->seekTo(0, -1000);
-
-	ePtr<iTsSource> source = createTsSource(r);
-	m_service_handler_timeshift.tuneExt(r, source, m_timeshift_file.c_str(), m_cue, 0, m_dvb_service, eDVBServicePMTHandler::timeshift_playback, false);
-
-	eDebug("[eDVBServicePlay] switchToTimeshift, putting decoder to pause");
-	pause();
-	updateDecoder(true);
-
-	// ОРИГИНАЛЬНЫЙ кусок OpenPLi-PC для работы с живым потоком
-	if (m_openpliPC_record)
-	{
-		m_openpliPC_record->stop();
-		m_openpliPC_record = 0;
-	}
-	if (m_openpliPC_fd > 0)
-	{
-		printf("Switch from Live TV to Timeshift, close(m_openpliPC_fd) %d\n", m_openpliPC_fd);
-		close(m_openpliPC_fd);
-		m_openpliPC_fd = -1;
-	}
-}*/
 
 void eDVBServicePlay::switchToTimeshift()
 {
@@ -3994,13 +3310,6 @@ void eDVBServicePlay::updateDecoder(bool sendSeekableStateChanged)
 
 	if (sendSeekableStateChanged)
 		m_event((iPlayableService*)this, evSeekableStatusChanged);
-
-/*	if (m_is_paused) // need?
-	{
-		unpause();
-		pause();
-	}*/
-}
 
 void eDVBServicePlay::loadCuesheet()
 {
